@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import axios from 'axios';
-import {testConnection, createConnection } from '../api/dbapi';
+import { testConnection, createConnection, getConnectionOverview } from '../api/dbapi'; // Import getConnectionOverview
 import {
   Container,
   Box,
@@ -167,9 +167,11 @@ const DBConnection = ({ onConnectionSaved }) => {
   const [testStatus, setTestStatus] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [overviewData, setOverviewData] = useState(null); // State for overview data
+  const [isFetchingOverview, setIsFetchingOverview] = useState(false); // Loading state for overview
 
   useEffect(() => {
-    setSupportedDatabaseTypes(['PostgreSQL', 'MySQL', 'MongoDB', 'SQLite']);
+    setSupportedDatabaseTypes(['PostgreSQL', 'MySQL', 'SQLite', 'Oracle', 'SQL Server', 'MongoDB']); // Ensure Oracle and SQL Server are included
   }, []);
 
   const initialValues = {
@@ -180,6 +182,7 @@ const DBConnection = ({ onConnectionSaved }) => {
     port: '',
     userId: '',
     password: '',
+    databaseName: '', // Add databaseName to initial values
   };
 
   const validationSchema = Yup.object({
@@ -187,9 +190,10 @@ const DBConnection = ({ onConnectionSaved }) => {
     description: Yup.string().required('Description is required'),
     databaseType: Yup.string().required('Database Type is required'),
     hostname: Yup.string().required('Hostname is required'),
-    port: Yup.number().required('Port is required').typeError('Port must be a number'),
+    port: Yup.string().required('Port is required'),
     userId: Yup.string().required('User ID is required'),
     password: Yup.string().required('Password is required'),
+    databaseName: Yup.string().required('Database Name is required'), // Add validation for databaseName
   });
 
   const handleTestConnection = async (values) => {
@@ -206,26 +210,41 @@ const DBConnection = ({ onConnectionSaved }) => {
       setTestStatus({ type: 'error', message: 'Failed to connect to the database.' });
     }
   };
-  
+
 
   const handleSaveConnection = async (values, { resetForm }) => {
     setSaveStatus(null);
     try {
       const saved = await createConnection(values);
       setSaveStatus({ type: 'success', message: 'Connection saved successfully!' });
-  
+
       if (onConnectionSaved) {
         onConnectionSaved(saved); // return full object
+        // Optionally fetch overview immediately after saving
+        // fetchOverview(saved.id);
       }
-      
-  
+
       resetForm();
     } catch (error) {
       console.error('Save connection failed:', error);
       setSaveStatus({ type: 'error', message: 'Failed to save connection.' });
     }
   };
-  
+
+  const fetchOverview = async (connectionId) => {
+    setIsFetchingOverview(true);
+    setOverviewData(null);
+    try {
+      const overview = await getConnectionOverview(connectionId);
+      setOverviewData(overview);
+    } catch (error) {
+      console.error("Error fetching database overview:", error);
+      // Optionally set an error message in state
+    } finally {
+      setIsFetchingOverview(false);
+    }
+  };
+
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
@@ -236,7 +255,7 @@ const DBConnection = ({ onConnectionSaved }) => {
       <StyledContainer>
         <StyledPaper>
           <Typography variant="h3" component="h3" align="center">
-             Connect !
+            Connect !
           </Typography>
           <Formik
             initialValues={initialValues}
@@ -246,8 +265,6 @@ const DBConnection = ({ onConnectionSaved }) => {
             {({ values, isSubmitting }) => (
               <Form>
                 <StyledFormControl>
-                  {/* <StyledInputLabel htmlFor="name">Name</StyledInputLabel> */}
-                  
                   <Field
                     as={StyledTextField}
                     id="name"
@@ -260,7 +277,6 @@ const DBConnection = ({ onConnectionSaved }) => {
                 </StyledFormControl>
 
                 <StyledFormControl>
-                  {/* <StyledInputLabel htmlFor="description">Description</StyledInputLabel> */}
                   <Field
                     as={StyledTextField}
                     id="description"
@@ -275,7 +291,6 @@ const DBConnection = ({ onConnectionSaved }) => {
                 </StyledFormControl>
 
                 <StyledFormControl>
-                   {/* <label id="databaseType-label">Database Type</label> */}
                   <Field
                     as={StyledSelect}
                     labelId="databaseType-label"
@@ -285,7 +300,7 @@ const DBConnection = ({ onConnectionSaved }) => {
                     placeholder='Select Database'
                     fullWidth
                   >
-                    <StyledMenuItem value="" sx={{placeholder: 'Select Database'}}>
+                    <StyledMenuItem value="" sx={{ placeholder: 'Select Database' }}>
                       <em>Select</em>
                     </StyledMenuItem>
                     {supportedDatabaseTypes.map((type) => (
@@ -298,7 +313,6 @@ const DBConnection = ({ onConnectionSaved }) => {
                 </StyledFormControl>
 
                 <StyledFormControl>
-                  {/* <StyledInputLabel htmlFor="hostname">DB Hostname</StyledInputLabel> */}
                   <Field
                     as={StyledTextField}
                     id="hostname"
@@ -311,7 +325,6 @@ const DBConnection = ({ onConnectionSaved }) => {
                 </StyledFormControl>
 
                 <StyledFormControl>
-                  {/* <StyledInputLabel htmlFor="port">Port</StyledInputLabel> */}
                   <Field
                     as={StyledTextField}
                     id="port"
@@ -324,7 +337,6 @@ const DBConnection = ({ onConnectionSaved }) => {
                 </StyledFormControl>
 
                 <StyledFormControl>
-                  {/* <StyledInputLabel htmlFor="userId">User ID</StyledInputLabel> */}
                   <Field
                     as={StyledTextField}
                     id="userId"
@@ -337,7 +349,6 @@ const DBConnection = ({ onConnectionSaved }) => {
                 </StyledFormControl>
 
                 <StyledFormControl>
-                  {/* <StyledInputLabel htmlFor="password">Password</StyledInputLabel> */}
                   <Field
                     as={StyledTextField}
                     id="password"
@@ -363,6 +374,19 @@ const DBConnection = ({ onConnectionSaved }) => {
                   <ErrorMessage name="password" component={FormHelperText} error />
                 </StyledFormControl>
 
+                {/* New field for Database Name */}
+                <StyledFormControl>
+                  <Field
+                    as={StyledTextField}
+                    id="databaseName"
+                    name="databaseName"
+                    variant="outlined"
+                    placeholder='Enter Database Name (if applicable)'
+                    fullWidth
+                  />
+                  <ErrorMessage name="databaseName" component={FormHelperText} error />
+                </StyledFormControl>
+
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <StyledButton
                     variant="contained"
@@ -380,6 +404,15 @@ const DBConnection = ({ onConnectionSaved }) => {
                   >
                     Save Connection
                   </StyledButton>
+                  {saveStatus && saveStatus.type === 'success' && (
+                    <StyledButton
+                      variant="outlined"
+                      onClick={() => fetchOverview(saveStatus.savedConnectionId)} // Need to pass the ID after save
+                      disabled={isFetchingOverview}
+                    >
+                      {isFetchingOverview ? 'Fetching Overview...' : 'Get Overview'}
+                    </StyledButton>
+                  )}
                 </Box>
 
                 {testStatus && (
@@ -388,6 +421,15 @@ const DBConnection = ({ onConnectionSaved }) => {
 
                 {saveStatus && (
                   <StyledMessage type={saveStatus.type}>{saveStatus.message}</StyledMessage>
+                )}
+
+                {overviewData && (
+                  <Box mt={3} bgcolor="#1e1e1e" p={2} borderRadius={1}>
+                    <Typography variant="h6" color="white" mb={1}>Database Overview:</Typography>
+                    <pre style={{ color: 'white', overflowX: 'auto' }}>
+                      {JSON.stringify(overviewData, null, 2)}
+                    </pre>
+                  </Box>
                 )}
               </Form>
             )}

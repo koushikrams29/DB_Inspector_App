@@ -6,7 +6,7 @@ DATABASE_PATH = Path(__file__).parent / DATABASE_FILE
 
 def get_db():
     conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row  
+    conn.row_factory = sqlite3.Row
     try:
         yield conn
     finally:
