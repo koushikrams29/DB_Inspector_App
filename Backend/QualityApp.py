@@ -5,13 +5,16 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, Integer, String
 from typing import List
 from pymongo import MongoClient
-from models import (
+from Backend.models.models import (
     DBConnection,
     DBConnectionCreate,
     DBConnectionUpdate,
     TestConnectionRequest,
     TestConnectionResponse
 )
+from Backend.services.backend_services import test_connection as run_test_connection
+from Backend.services.backend_services import get_flavor_service
+
 
 app = FastAPI()
 
@@ -84,35 +87,9 @@ def construct_connection_url(db_type, db_hostname, db_port, user_id, password, d
 
 # Endpoint: Test DB connection
 @app.post("/connections/test", response_model=TestConnectionResponse)
-def test_connection(conn: TestConnectionRequest):
-    try:
-        # MongoDB uses pymongo, not SQLAlchemy
-        if conn.db_type == "MongoDB":
-            is_srv = conn.db_hostname.endswith(".mongodb.net")
-            prefix = "mongodb+srv" if is_srv else "mongodb"
-            port_part = "" if is_srv else f":{conn.db_port}"
-            db_url = f"{prefix}://{conn.user_id}:{conn.password}@{conn.db_hostname}{port_part}/{conn.database or 'admin'}"
+def test_connection_api(conn: TestConnectionRequest):
+    return run_test_connection(conn)
 
-            client = MongoClient(db_url)
-            client.admin.command("ping")
-            return TestConnectionResponse(status=True, message="MongoDB connection successful")
-
-        # All other SQL DBs
-        db_url = construct_connection_url(
-            conn.db_type,
-            conn.db_hostname,
-            conn.db_port,
-            conn.user_id,
-            conn.password,
-            conn.database
-        )
-        test_engine = create_engine(db_url)
-        with test_engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-        return TestConnectionResponse(status=True, message="SQL DB connection successful")
-    
-    except Exception as e:
-        return TestConnectionResponse(status=False, message=str(e))
 
 
 
