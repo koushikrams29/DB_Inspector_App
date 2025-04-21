@@ -104,15 +104,31 @@ const DBConnectionView = () => {
     setIsFetchingOverview(true);
     setOverviewData(null);
     try {
-      const overview = await getConnectionOverview(id);
+      const profilingPayload = {
+        db_type: connectionData.databaseType,
+        db_hostname: connectionData.hostname,
+        db_port: connectionData.port,
+        user: connectionData.userId,
+        password: connectionData.password,
+        database: connectionData.databaseName,
+        project_code: "DEMO"  // Or use "DEFAULT" if that’s your standard
+      };
+      console.log("conn_id being sent:", id);
+      console.log("payload being sent:", profilingPayload);
+
+      // Assuming you want to pass the connection ID in the URL, like '/profiling/{conn_id}/profiling'
+      const overview = await getConnectionOverview(id, profilingPayload); // Pass `id` here in the URL
+
       setOverviewData(overview);
     } catch (error) {
-      console.error("Error fetching database overview:", error);
-      setStatus({ type: 'error', message: 'Failed to fetch database overview' });
+      console.error("Error fetching profiling data:", error);
+      setStatus({ type: 'error', message: 'Failed to fetch profiling data' });
     } finally {
       setIsFetchingOverview(false);
     }
   };
+
+
 
   if (!connectionData) return <Typography color="white">Loading...</Typography>;
 
@@ -154,7 +170,7 @@ const DBConnectionView = () => {
                 onClick={fetchOverview}
                 disabled={isFetchingOverview}
               >
-                {isFetchingOverview ? 'Fetching Overview...' : 'Get Database Overview'}
+                {isFetchingOverview ? 'Profiling Data...' : 'Get Profiling of Database'}
               </Button>
             </Box>
           )}

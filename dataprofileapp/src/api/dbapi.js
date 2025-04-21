@@ -119,19 +119,27 @@ export const deleteConnection = async (id) => {
 };
 
 /**
- * Gets schema overview (tables/collections and column/sample field details) for a specific database connection.
- * Supports SQL databases (PostgreSQL, MySQL, SQLite, etc.) and MongoDB.
- *
- * @param {number} connectionId - The connection ID.
- * @returns {Promise<object>} - Schema info including tables/collections and column/sample field metadata.
+ * Profiles a database using CProfilingSQL logic.
+ * @param {object} data - Profiling parameters: db_type, db_hostname, db_port, user_id, password, database, [project_code]
+ * @returns {Promise<object>} - Profiling result.
  */
-export const getConnectionOverview = async (connectionId) => {
-  try {
-      const response = await axios.get(`${BASE_URL}/overview/${connectionId}`);
-      return response.data; // Returns schema information (tables/collections and columns/fields)
-  } catch (error) {
-      console.error("Error getting connection overview:", error);
-      throw error;
-  }
-};
+// dbapi.js
+
+export const getConnectionProfiling = async (conn_id, connectionData) => {
+    const response = await fetch(`/profiling/${conn_id}/profiling`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(connectionData),
+    });
+  
+    if (!response.ok) {
+      throw new Error('Failed to fetch profiling data');
+    }
+  
+    return response.json();
+  };
+  
+
 

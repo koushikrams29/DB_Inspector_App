@@ -1,5 +1,6 @@
 from urllib import request
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -13,8 +14,10 @@ from Backend.models.models import (
     TestConnectionRequest,
     TestConnectionResponse
 )
+from pydantic import BaseModel
 from Backend.services.backend_services import test_connection as run_test_connection
 from Backend.services.backend_services import get_flavor_service
+from Backend.queries.profiling_query import CProfilingSQL
 
 
 app = FastAPI()
@@ -54,6 +57,17 @@ class DBConnectionModel(Base):
     user_id = Column(String)
     password = Column(String)
     database = Column(String, nullable=True)
+    
+#This is the profiling model for storing the profiling data
+class ConnectionProfilingRequest(BaseModel):
+    db_type: str
+    db_hostname: str
+    db_port: int
+    user_id: str
+    password: str
+    database: str
+    project_code: str = "DEFAULT"
+
 
 
 Base.metadata.create_all(bind=engine)
@@ -154,6 +168,27 @@ def delete_connection(conn_id: int):
     return {"message": "Connection deleted successfully"}
 
 
+
+@app.post("/profiling/{conn_id}/profiling")
+def profile_connection(conn_id: int, conn: ConnectionProfilingRequest):
+    print(f"conn_id received: {conn_id}")
+    print(f"conn data: {conn}")
+    try:
+        profiler = CProfilingSQL()
+        result = profiler.generate_profiling_sql(
+            db_type=conn.db_type,
+            db_hostname=conn.db_hostname,
+            db_port=conn.db_port,
+            user_id=conn.user_id,
+            password=conn.password,
+            database=conn.database,
+            project_code=conn.project_code
+        )
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    
 @app.get("/overview/{conn_id}")
 def get_overview(conn_id: int):
     pass
