@@ -16,16 +16,16 @@ def get_flavor_service(flavor: str):
 def _start_target_db_engine(connection: DBConnection):
     flavor_service = get_flavor_service(connection.db_type)
     
-    connection_params = {
-        "db_type": connection.db_type,
-        "db_hostname": connection.db_hostname,
-        "db_port": connection.db_port,
-        "user_id": connection.user_id,
-        "password": connection.password,
-        "database": connection.database,
-    }
+    # connection = {
+    #     "db_type": connection.db_type,
+    #     "db_hostname": connection.db_hostname,
+    #     "db_port": connection.db_port,
+    #     "user_id": connection.user_id,
+    #     "password": connection.password,
+    #     "database": connection.database,
+    # }
 
-    flavor_service.init(connection_params)
+    flavor_service.init(connection)
     connection_string = flavor_service.get_connection_string(connection.password)
     
     connect_args = {"connect_timeout": 3600}
@@ -47,6 +47,8 @@ def retrieve_target_db_data(
     with db_engine.connect() as conn:
         result = conn.execute(text(sql_query))
         return result.fetchall()
+    
+
 
 
 def test_connection(request: TestConnectionRequest) -> TestConnectionResponse:

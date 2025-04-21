@@ -30,7 +30,7 @@ class FlavorService:
         self.host = connection.db_hostname
         self.port = connection.db_port
         self.dbname = connection.database
-        self.flavor = connection.db_type
+        self.flavor = connection.db_type.lower()
         self.dbschema = None
         self.connect_by_key = False
         self.http_path = None

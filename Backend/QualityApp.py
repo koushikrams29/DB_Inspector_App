@@ -1,3 +1,4 @@
+from urllib import request
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
@@ -28,9 +29,15 @@ app.add_middleware(
 )
 
 # Database for storing connection info (SQLite for now)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./connections.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+# SQLALCHEMY_DATABASE_URL = "postgresql://postgres:bhuvan@localhost:5432/postgres"
+# engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+# Base = declarative_base()
+
+
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:bhuvan@localhost:5432/postgres"
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
@@ -149,75 +156,66 @@ def delete_connection(conn_id: int):
 
 @app.get("/overview/{conn_id}")
 def get_overview(conn_id: int):
-    db = next(get_db())
-    conn = db.query(DBConnectionModel).filter(DBConnectionModel.id == conn_id).first()
-    if not conn:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    pass
 
-    if conn.db_type == "MongoDB":
-        try:
-            is_srv = conn.db_hostname.endswith(".mongodb.net")
-            prefix = "mongodb+srv" if is_srv else "mongodb"
-            port_part = "" if is_srv else f":{conn.db_port}"
-            db_url = f"{prefix}://{conn.user_id}:{conn.password}@{conn.db_hostname}{port_part}/{conn.database or 'admin'}"
 
-            client = MongoClient(db_url)
-            db_instance = client[conn.database or "admin"]
-            collections = db_instance.list_collection_names()
+    # if conn.db_type == "MongoDB":
+    #     try:
+    #         is_srv = conn.db_hostname.endswith(".mongodb.net")
+    #         prefix = "mongodb+srv" if is_srv else "mongodb"
+    #         port_part = "" if is_srv else f":{conn.db_port}"
+    #         db_url = f"{prefix}://{conn.user_id}:{conn.password}@{conn.db_hostname}{port_part}/{conn.database or 'admin'}"
 
-            result = []
-            for col in collections:
-                sample = db_instance[col].find_one()
-                if sample:
-                    sample_fields = list(sample.keys())
-                else:
-                    sample_fields = []
-                result.append({"name": col, "sample_fields": sample_fields})
+    #         client = MongoClient(db_url)
+    #         db_instance = client[conn.database or "admin"]
+    #         collections = db_instance.list_collection_names()
 
-            return {
-                "db_type": "MongoDB",
-                "collections": result
-            }
+    #         result = []
+    #         for col in collections:
+    #             sample = db_instance[col].find_one()
+    #             if sample:
+    #                 sample_fields = list(sample.keys())
+    #             else:
+    #                 sample_fields = []
+    #             result.append({"name": col, "sample_fields": sample_fields})
 
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"MongoDB Error: {str(e)}")
+    #         return {
+    #             "db_type": "MongoDB",
+    #             "collections": result
+    #         }
 
-    else:
-        try:
-            db_url = construct_connection_url(
-                conn.db_type,
-                conn.db_hostname,
-                conn.db_port,
-                conn.user_id,
-                conn.password,
-                conn.database
-            )
-            engine = create_engine(db_url)
-            with engine.connect() as connection:
-                # Fetch tables
-                table_query = text("""
-                    SELECT table_name FROM information_schema.tables 
-                    WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-                """)
-                tables = connection.execute(table_query).fetchall()
+    #     except Exception as e:
+    #         raise HTTPException(status_code=500, detail=f"MongoDB Error: {str(e)}")
 
-                result = []
-                for table_row in tables:
-                    table_name = table_row[0]
-                    column_query = text("""
-                        SELECT column_name, data_type FROM information_schema.columns
-                        WHERE table_name = :table_name
-                    """)
-                    columns = connection.execute(column_query, {"table_name": table_name}).fetchall()
-                    result.append({
-                        "name": table_name,
-                        "columns": [{"name": col[0], "type": col[1]} for col in columns]
-                    })
+    # else:
+    #     try:
 
-            return {
-                "db_type": conn.db_type,
-                "tables": result
-            }
+    #         engine = create_engine(db_url)
+    #         with engine.connect() as connection:
+    #             # Fetch tables
+    #             table_query = text("""
+    #                 SELECT table_name FROM information_schema.tables 
+    #                 WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+    #             """)
+    #             tables = connection.execute(table_query).fetchall()
 
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"SQL DB Error: {str(e)}")
+    #             result = []
+    #             for table_row in tables:
+    #                 table_name = table_row[0]
+    #                 column_query = text("""
+    #                     SELECT column_name, data_type FROM information_schema.columns
+    #                     WHERE table_name = :table_name
+    #                 """)
+    #                 columns = connection.execute(column_query, {"table_name": table_name}).fetchall()
+    #                 result.append({
+    #                     "name": table_name,
+    #                     "columns": [{"name": col[0], "type": col[1]} for col in columns]
+    #                 })
+
+    #         return {
+    #             "db_type": conn.db_type,
+    #             "tables": result
+    #         }
+
+    #     except Exception as e:
+    #         raise HTTPException(status_code=500, detail=f"SQL DB Error: {str(e)}")

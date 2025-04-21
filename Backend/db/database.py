@@ -1,83 +1,75 @@
-import sqlite3
-from pathlib import Path
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session
+from typing import Optional, List
 
-DATABASE_FILE = "connections.db"
-DATABASE_PATH = Path(__file__).parent / DATABASE_FILE
+# Define the PostgreSQL database URL
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:bhuvan@localhost:5432/postgres"  # Replace with your credentials
 
-def get_db():
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
+# Create the SQLAlchemy engine
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
+# Create a SessionLocal class to create database sessions
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Define the base for declarative models
+Base = declarative_base()
+
+# Define the SQLAlchemy model for the 'connections' table
+class Connection(Base):
+    __tablename__ = "connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String)
+    db_type = Column(String, nullable=False)
+    db_hostname = Column(String, nullable=False)
+    db_port = Column(Integer, nullable=False)
+    user_id = Column(String, nullable=False)
+    password = Column(String, nullable=False)
+
+# Function to create the tables in PostgreSQL
 def create_tables():
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS connections (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            db_type TEXT NOT NULL,
-            db_hostname TEXT NOT NULL,
-            db_port INTEGER NOT NULL,
-            user_id TEXT NOT NULL,
-            password TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+    Base.metadata.create_all(bind=engine)
 
-
+# Call create_tables to ensure the table exists
 create_tables()
 
-def create_connection(conn: sqlite3.Connection, connection: dict) -> int:
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO connections (name, description, db_type, db_hostname, db_port, user_id, password)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
-        connection['name'],
-        connection.get('description'),
-        connection['db_type'],
-        connection['db_hostname'],
-        connection['db_port'],
-        connection['user_id'],
-        connection['password']
-    ))
-    conn.commit()
-    return cursor.lastrowid
+# Dependency to get a database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-def get_all_connections(conn: sqlite3.Connection) -> list:
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM connections")
-    rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+def create_connection(db: Session, connection: dict) -> int:
+    db_connection = Connection(**connection)
+    db.add(db_connection)
+    db.commit()
+    db.refresh(db_connection)
+    return db_connection.id
 
-def get_connection(conn: sqlite3.Connection, connection_id: int) -> dict | None:
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM connections WHERE id = ?", (connection_id,))
-    row = cursor.fetchone()
-    return dict(row) if row else None
+def get_all_connections(db: Session) -> List[Connection]:
+    return db.query(Connection).all()
 
-def update_connection(conn: sqlite3.Connection, connection_id: int, updated_data: dict) -> bool:
-    cursor = conn.cursor()
-    set_clauses = []
-    values = []
-    for key, value in updated_data.items():
-        if key != 'id':
-            set_clauses.append(f"{key} = ?")
-            values.append(value)
-    values.append(connection_id)
-    sql = f"UPDATE connections SET {', '.join(set_clauses)} WHERE id = ?"
-    cursor.execute(sql, tuple(values))
-    conn.commit()
-    return cursor.rowcount > 0
+def get_connection(db: Session, connection_id: int) -> Optional[Connection]:
+    return db.query(Connection).filter(Connection.id == connection_id).first()
 
-def delete_connection(conn: sqlite3.Connection, connection_id: int) -> bool:
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM connections WHERE id = ?", (connection_id,))
-    conn.commit()
-    return cursor.rowcount > 0
+def update_connection(db: Session, connection_id: int, updated_data: dict) -> bool:
+    db_connection = db.query(Connection).filter(Connection.id == connection_id).first()
+    if db_connection:
+        for key, value in updated_data.items():
+            setattr(db_connection, key, value)
+        db.commit()
+        return True
+    return False
+
+def delete_connection(db: Session, connection_id: int) -> bool:
+    db_connection = db.query(Connection).filter(Connection.id == connection_id).first()
+    if db_connection:
+        db.delete(db_connection)
+        db.commit()
+        return True
+    return False
