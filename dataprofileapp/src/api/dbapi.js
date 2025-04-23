@@ -117,16 +117,9 @@ export const deleteConnection = async (id) => {
         throw error;
     }
 };
-
-/**
- * Profiles a database using CProfilingSQL logic.
- * @param {object} data - Profiling parameters: db_type, db_hostname, db_port, user_id, password, database, [project_code]
- * @returns {Promise<object>} - Profiling result.
- */
-// dbapi.js
-
+//For profiling
 export const getConnectionProfiling = async (conn_id, connectionData) => {
-    const response = await fetch(`/profiling/${conn_id}/profiling`, {
+    const response = await fetch(`${BASE_URL}/connection/${conn_id}/profiling`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -139,6 +132,22 @@ export const getConnectionProfiling = async (conn_id, connectionData) => {
     }
   
     return response.json();
+  };
+  
+export const createTableGroup = async (conn_Id, data) => {
+try {
+    const response = await axios.post(`${baseURL}/connection/${conn_Id}/table-groups`, data);
+    return response.data;
+} catch (error) {
+    console.error("Error creating table group:", error);
+    throw error;
+}
+};
+
+
+export const getTableGroups = async (conn_Id) => {
+    const response = await axios.get(`${baseURL}/connection/${conn_Id}/table-groups/`);
+    return response.data;
   };
   
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import axios from 'axios';
-import { testConnection, createConnection, getConnectionOverview } from '../api/dbapi'; // Import getConnectionOverview
+import { testConnection, createConnection, getConnectionProfiling } from '../api/dbapi'; // Import getConnectionProfiling
 import {
   Container,
   Box,
@@ -235,7 +235,7 @@ const DBConnection = ({ onConnectionSaved }) => {
     setIsFetchingOverview(true);
     setOverviewData(null);
     try {
-      const overview = await getConnectionOverview(connectionId);
+      const overview = await getConnectionProfiling(connectionId);
       setOverviewData(overview);
     } catch (error) {
       console.error("Error fetching database overview:", error);

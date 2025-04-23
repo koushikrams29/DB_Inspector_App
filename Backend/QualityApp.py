@@ -5,8 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, Integer, String
-from typing import List
-from pymongo import MongoClient
+from typing import List, Dict
 from Backend.models.models import (
     DBConnection,
     DBConnectionCreate,
@@ -14,11 +13,12 @@ from Backend.models.models import (
     TestConnectionRequest,
     TestConnectionResponse
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from Backend.services.backend_services import test_connection as run_test_connection
 from Backend.services.backend_services import get_flavor_service
 from Backend.queries.profiling_query import CProfilingSQL
-
+from Backend.db.database import TableGroupModel
+from uuid import UUID, uuid4
 
 app = FastAPI()
 
@@ -38,7 +38,7 @@ app.add_middleware(
 # Base = declarative_base()
 
 
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:bhuvan@localhost:5432/postgres"
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:koushik@localhost:5432/postgres"
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -63,12 +63,37 @@ class ConnectionProfilingRequest(BaseModel):
     db_type: str
     db_hostname: str
     db_port: int
-    user_id: str
+    user: str
     password: str
     database: str
     project_code: str = "DEFAULT"
 
+#Table group models for user input
+class TableGroup(BaseModel):
+    name: str
+    schema: str
+    tables_to_include_mask: str
+    profiling_id_column_mask: str
+    tables_to_exclude_mask: str
+    profiling_surrogate_key_column_mask: str
+    explicit_table_list: List[str]
+    min_profiling_age_days: int
 
+
+# In-memory database substitute
+table_groups_db: Dict[int, Dict[UUID, dict]] = {}  # maps conn_id -> {group_id -> table group data}
+
+def list_to_str(lst: List[str]) -> str:
+    return ",".join(lst)
+
+def str_to_list(s: str) -> List[str]:
+    return s.split(",") if s else []
+
+
+
+class TableGroupOut(TableGroup):
+    id: str
+    id: UUID = Field(default_factory=uuid4)
 
 Base.metadata.create_all(bind=engine)
 
@@ -80,29 +105,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# Utility: build DB URL
-def construct_connection_url(db_type, db_hostname, db_port, user_id, password, database=None):
-    if db_type == "PostgreSQL":
-        return f"postgresql://{user_id}:{password}@{db_hostname}:{db_port}/{database}"
-    elif db_type == "MySQL":
-        return f"mysql+pymysql://{user_id}:{password}@{db_hostname}:{db_port}/{database}"
-    elif db_type == "SQLite":
-        return f"sqlite:///{database or ':memory:'}"
-    elif db_type == "Oracle":
-        return f"oracle+cx_oracle://{user_id}:{password}@{db_hostname}:{db_port}/?service_name={database}"
-    elif db_type == "SQL Server":
-        return f"mssql+pyodbc://{user_id}:{password}@{db_hostname},{db_port}/{database}?driver=ODBC+Driver+17+for+SQL+Server"
-    elif db_type == "MongoDB":
-        # Check if hostname includes .mongodb.net to assume MongoDB Atlas
-        is_srv = db_hostname.endswith(".mongodb.net")
-        prefix = "mongodb+srv" if is_srv else "mongodb"
-        port_part = "" if is_srv else f":{db_port}"
-        # Construct the connection string
-        return f"{prefix}://{user_id}:{password}@{db_hostname}{port_part}/{database or 'admin'}"
-    else:
-        raise ValueError(f"Unsupported database type: {db_type}")
 
 
 
@@ -169,24 +171,98 @@ def delete_connection(conn_id: int):
 
 
 
-@app.post("/profiling/{conn_id}/profiling")
+@app.post("/connection/{conn_id}/profiling")
 def profile_connection(conn_id: int, conn: ConnectionProfilingRequest):
     print(f"conn_id received: {conn_id}")
     print(f"conn data: {conn}")
+
     try:
-        profiler = CProfilingSQL()
-        result = profiler.generate_profiling_sql(
-            db_type=conn.db_type,
-            db_hostname=conn.db_hostname,
-            db_port=conn.db_port,
-            user_id=conn.user_id,
-            password=conn.password,
-            database=conn.database,
-            project_code=conn.project_code
-        )
+       
+        profiler = CProfilingSQL(strProjectCode=conn.project_code, flavor=conn.db_type.lower())
+
+        profiler.connection_id = str(conn_id)
+        profiler.data_schema = "testdb"  # or derive dynamically
+        profiler.data_table = "land_registry_price"  # set appropriately if needed
+        profiler.contingency_columns = "'property_type', 'city'"
+        result = profiler.GetContingencyCounts()
+
         return {"status": "success", "data": result}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Create a table group
+@app.post("/connection/{conn_id}/table-groups/", response_model=TableGroupOut)
+def create_table_group_for_connection(conn_id: int, table_group: TableGroup):
+    db = next(get_db())
+    group_id = str(uuid4())
+    db_group = TableGroupModel(
+        id=group_id,
+        conn_id=conn_id,
+        **{**table_group.dict(), "explicit_table_list": list_to_str(table_group.explicit_table_list)}
+    )
+    db.add(db_group)
+    db.commit()
+    db.refresh(db_group)
+    return TableGroupOut(id=db_group.id, **table_group.dict())
+
+ 
+# Get all table groups
+@app.get("/connection/{conn_id}/table-groups/", response_model=List[TableGroupOut])
+def get_table_groups_for_connection(conn_id: int):
+    db = next(get_db())
+    groups = db.query(TableGroupModel).filter_by(conn_id=conn_id).all()
+    return [
+        TableGroupOut(
+            id=group.id,
+            name=group.name,
+            schema=group.schema,
+            tables_to_include_mask=group.tables_to_include_mask,
+            profiling_id_column_mask=group.profiling_id_column_mask,
+            tables_to_exclude_mask=group.tables_to_exclude_mask,
+            profiling_surrogate_key_column_mask=group.profiling_surrogate_key_column_mask,
+            explicit_table_list=str_to_list(group.explicit_table_list),
+            min_profiling_age_days=group.min_profiling_age_days
+        )
+        for group in groups
+    ]
+
+
+
+# Get one table group
+@app.get("/connection/{conn_id}/table-groups/{group_id}", response_model=TableGroupOut)
+def get_specific_table_group(conn_id: int, group_id: str):
+    db = next(get_db())
+    group = db.query(TableGroupModel).filter_by(conn_id=conn_id, id=group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Table group not found")
+    return TableGroupOut(
+        id=group.id,
+        name=group.name,
+        schema=group.schema,
+        tables_to_include_mask=group.tables_to_include_mask,
+        profiling_id_column_mask=group.profiling_id_column_mask,
+        tables_to_exclude_mask=group.tables_to_exclude_mask,
+        profiling_surrogate_key_column_mask=group.profiling_surrogate_key_column_mask,
+        explicit_table_list=str_to_list(group.explicit_table_list),
+        min_profiling_age_days=group.min_profiling_age_days
+    )
+
+
+
+#Delete a table group
+@app.delete("/connection/{conn_id}/table-groups/{group_id}")
+def delete_table_group(conn_id: int, group_id: str):
+    db = next(get_db())
+    group = db.query(TableGroupModel).filter_by(conn_id=conn_id, id=group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Table group not found")
+    db.delete(group)
+    db.commit()
+    return {"message": "Table group deleted"}
+
+
 
     
 @app.get("/overview/{conn_id}")

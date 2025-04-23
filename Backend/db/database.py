@@ -3,9 +3,10 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session
 from typing import Optional, List
+from uuid import uuid4
 
 # Define the PostgreSQL database URL
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:bhuvan@localhost:5432/postgres"  # Replace with your credentials
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:koushik@localhost:5432/postgres"  # Replace with your credentials
 
 # Create the SQLAlchemy engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
@@ -28,6 +29,21 @@ class Connection(Base):
     db_port = Column(Integer, nullable=False)
     user_id = Column(String, nullable=False)
     password = Column(String, nullable=False)
+
+#DEfining the tablegroup model for SQLAlchemy
+class TableGroupModel(Base):
+    __tablename__ = "table_groups"
+
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid4()))
+    conn_id = Column(Integer, index=True)  # Foreign key if you want to relate to DBConnectionModel
+    name = Column(String)
+    schema = Column(String)
+    tables_to_include_mask = Column(String)
+    profiling_id_column_mask = Column(String)
+    tables_to_exclude_mask = Column(String)
+    profiling_surrogate_key_column_mask = Column(String)
+    explicit_table_list = Column(String)  # Store as comma-separated string
+    min_profiling_age_days = Column(Integer)
 
 # Function to create the tables in PostgreSQL
 def create_tables():
@@ -73,3 +89,5 @@ def delete_connection(db: Session, connection_id: int) -> bool:
         db.commit()
         return True
     return False
+
+
